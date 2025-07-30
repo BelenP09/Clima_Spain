@@ -214,6 +214,216 @@ def load_synthetic_data():
     
     return df
 
+@st.cache_data
+def load_andalucia_stations():
+    """Cargar información de estaciones meteorológicas de Andalucía"""
+    try:
+        # Cargar datos del archivo principal
+        data_path = "Data/Base de datos/clima_limpio.csv"
+        
+        # Definir límites geográficos de Andalucía
+        ANDALUCIA_BOUNDS = {
+            'lat_min': 36.0,   # Sur (cerca de Tarifa)
+            'lat_max': 38.8,   # Norte (Sierra Morena)
+            'lon_min': -7.5,   # Oeste (Huelva)
+            'lon_max': -1.6    # Este (Almería)
+        }
+        
+        # Leer datos en chunks para eficiencia
+        chunk_list = []
+        for chunk in pd.read_csv(data_path, chunksize=5000):
+            # Filtrar por región de Andalucía
+            andalucia_chunk = chunk[
+                (chunk['LATITUDE'] >= ANDALUCIA_BOUNDS['lat_min']) &
+                (chunk['LATITUDE'] <= ANDALUCIA_BOUNDS['lat_max']) &
+                (chunk['LONGITUDE'] >= ANDALUCIA_BOUNDS['lon_min']) &
+                (chunk['LONGITUDE'] <= ANDALUCIA_BOUNDS['lon_max'])
+            ]
+            if not andalucia_chunk.empty:
+                chunk_list.append(andalucia_chunk)
+        
+        if not chunk_list:
+            return create_synthetic_stations()
+        
+        # Combinar chunks
+        andalucia_df = pd.concat(chunk_list, ignore_index=True)
+        
+        # Función para identificar provincia
+        def identificar_provincia(lat, lon, station_code=None):
+            # Correcciones específicas por código de estación
+            correcciones_provincias = {
+                'SP000008410': 'Córdoba',    # CORDOBA AEROPUERTO
+                'SP000006155': 'Málaga',     # MALAGA AEROPUERTO  
+                'SPE00120512': 'Sevilla',    # SEVILLA SAN PABLO
+            }
+            
+            if station_code in correcciones_provincias:
+                return correcciones_provincias[station_code]
+            
+            # Identificación por coordenadas geográficas
+            if lon < -6.8:
+                return 'Huelva'
+            elif lon < -5.3:
+                if lat > 37.6:
+                    return 'Sevilla'
+                else:
+                    return 'Cádiz'
+            elif lon < -4.5:
+                if lat > 37.9:
+                    return 'Córdoba'
+                elif lat > 37.0:
+                    return 'Sevilla'
+                else:
+                    return 'Málaga'
+            elif lon < -3.5:
+                if lat > 37.7:
+                    return 'Jaén'
+                else:
+                    return 'Granada'
+            else:
+                return 'Almería'
+        
+        # Asignar provincias
+        andalucia_df['PROVINCIA'] = andalucia_df.apply(
+            lambda row: identificar_provincia(row['LATITUDE'], row['LONGITUDE'], row['STATION']), 
+            axis=1
+        )
+        
+        # Procesar temperaturas (convertir de décimas si es necesario)
+        if andalucia_df['TMAX'].max() > 100:
+            andalucia_df['TMAX_C'] = andalucia_df['TMAX'] / 10
+            andalucia_df['TMIN_C'] = andalucia_df['TMIN'] / 10
+        else:
+            andalucia_df['TMAX_C'] = andalucia_df['TMAX']
+            andalucia_df['TMIN_C'] = andalucia_df['TMIN']
+        
+        # Procesar precipitación
+        if andalucia_df['PRCP'].max() > 1000:
+            andalucia_df['PRCP_MM'] = andalucia_df['PRCP'] / 10
+        else:
+            andalucia_df['PRCP_MM'] = andalucia_df['PRCP']
+        
+        # Crear resumen de estaciones
+        estaciones_info = andalucia_df.groupby(['STATION', 'PROVINCIA']).agg({
+            'LATITUDE': 'first',
+            'LONGITUDE': 'first',
+            'ELEVATION': 'first',
+            'NAME': 'first',
+            'TMAX_C': 'mean',
+            'TMIN_C': 'mean',
+            'PRCP_MM': 'mean',
+            'DATE': 'count'
+        }).reset_index()
+        
+        estaciones_info.rename(columns={'DATE': 'REGISTROS'}, inplace=True)
+        estaciones_info['TAVG_C'] = (estaciones_info['TMAX_C'] + estaciones_info['TMIN_C']) / 2
+        
+        return estaciones_info
+        
+    except Exception as e:
+        st.warning(f"Error cargando estaciones reales: {e}")
+        return create_synthetic_stations()
+
+def create_synthetic_stations():
+    """Crear estaciones sintéticas de Andalucía como fallback"""
+    # Estaciones reales basadas en el EDA
+    stations_data = [
+        {'STATION': 'SPE00119783', 'NAME': 'ALMERIA AEROPUERTO, SP', 'PROVINCIA': 'Almería', 
+         'LATITUDE': 36.85, 'LONGITUDE': -2.36, 'ELEVATION': 21, 'TMAX_C': 23.3, 'TMIN_C': 14.7, 'PRCP_MM': 200},
+        {'STATION': 'SPE00119936', 'NAME': 'CADIZ, SP', 'PROVINCIA': 'Cádiz',
+         'LATITUDE': 36.50, 'LONGITUDE': -6.26, 'ELEVATION': 3, 'TMAX_C': 22.8, 'TMIN_C': 15.2, 'PRCP_MM': 600},
+        {'STATION': 'SP000008410', 'NAME': 'CORDOBA AEROPUERTO, SP', 'PROVINCIA': 'Córdoba',
+         'LATITUDE': 37.84, 'LONGITUDE': -4.85, 'ELEVATION': 90, 'TMAX_C': 25.1, 'TMIN_C': 10.9, 'PRCP_MM': 500},
+        {'STATION': 'SPE00120089', 'NAME': 'GRANADA AEROPUERTO, SP', 'PROVINCIA': 'Granada',
+         'LATITUDE': 37.19, 'LONGITUDE': -3.79, 'ELEVATION': 567, 'TMAX_C': 22.5, 'TMIN_C': 9.8, 'PRCP_MM': 450},
+        {'STATION': 'SPE00120152', 'NAME': 'HUELVA, SP', 'PROVINCIA': 'Huelva',
+         'LATITUDE': 37.26, 'LONGITUDE': -6.95, 'ELEVATION': 17, 'TMAX_C': 23.7, 'TMIN_C': 12.2, 'PRCP_MM': 550},
+        {'STATION': 'SPE00120170', 'NAME': 'JAEN, SP', 'PROVINCIA': 'Jaén',
+         'LATITUDE': 37.78, 'LONGITUDE': -3.81, 'ELEVATION': 582, 'TMAX_C': 22.1, 'TMIN_C': 12.6, 'PRCP_MM': 480},
+        {'STATION': 'SP000006155', 'NAME': 'MALAGA AEROPUERTO, SP', 'PROVINCIA': 'Málaga',
+         'LATITUDE': 36.67, 'LONGITUDE': -4.49, 'ELEVATION': 7, 'TMAX_C': 23.2, 'TMIN_C': 13.7, 'PRCP_MM': 520},
+        {'STATION': 'SPE00120512', 'NAME': 'SEVILLA SAN PABLO, SP', 'PROVINCIA': 'Sevilla',
+         'LATITUDE': 37.42, 'LONGITUDE': -5.88, 'ELEVATION': 31, 'TMAX_C': 25.5, 'TMIN_C': 12.8, 'PRCP_MM': 547}
+    ]
+    
+    df = pd.DataFrame(stations_data)
+    df['TAVG_C'] = (df['TMAX_C'] + df['TMIN_C']) / 2
+    df['REGISTROS'] = np.random.randint(15000, 35000, len(df))
+    
+    return df
+
+def create_andalucia_stations_map():
+    """Crear mapa interactivo de estaciones meteorológicas de Andalucía"""
+    # Cargar datos de estaciones
+    estaciones_info = load_andalucia_stations()
+    
+    # Colores por provincia - Más fuertes y llamativos
+    colores_provincia = {
+        'Almería': '#FF0000',      # Rojo brillante
+        'Cádiz': '#00FFFF',       # Cian brillante
+        'Córdoba': '#0066FF',     # Azul intenso
+        'Granada': '#00FF00',     # Verde lima brillante
+        'Huelva': '#FFAA00',      # Naranja vibrante
+        'Jaén': '#CC00FF',        # Magenta brillante
+        'Málaga': '#FF6600',      # Naranja rojizo
+        'Sevilla': '#FFD700'      # Dorado brillante
+    }
+    
+    # Crear mapa base
+    fig_mapa = go.Figure()
+    
+    # Añadir estaciones por provincia
+    for provincia in estaciones_info['PROVINCIA'].unique():
+        data_prov = estaciones_info[estaciones_info['PROVINCIA'] == provincia]
+        
+        fig_mapa.add_trace(go.Scattermapbox(
+            lat=data_prov['LATITUDE'],
+            lon=data_prov['LONGITUDE'],
+            mode='markers',
+            marker=dict(
+                size=16,  # Tamaño más grande
+                color=colores_provincia.get(provincia, '#95A5A6'),
+                opacity=1.0  # Opacidad completa para mayor visibilidad
+            ),
+            text=data_prov.apply(lambda row: 
+                f"<b>{row['NAME']}</b><br>" +
+                f"Provincia: {row['PROVINCIA']}<br>" +
+                f"Elevación: {row['ELEVATION']:.0f} m<br>" +
+                f"Temp. Media Máx: {row['TMAX_C']:.1f}°C<br>" +
+                f"Temp. Media Mín: {row['TMIN_C']:.1f}°C<br>" +
+                f"Precipitación Media: {row['PRCP_MM']:.1f} mm<br>" +
+                f"Registros: {row['REGISTROS']:,}", axis=1),
+            hovertemplate='%{text}<extra></extra>',
+            name=provincia
+        ))
+    
+    # Configurar layout del mapa
+    fig_mapa.update_layout(
+        title={
+            'text': "🗺️ Red de Estaciones Meteorológicas de Andalucía<br><sub>Distribución geográfica y características climáticas</sub>",
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'color': '#2E8B57'}
+        },
+        mapbox=dict(
+            style="open-street-map",
+            center=dict(lat=37.5, lon=-4.5),
+            zoom=6.5
+        ),
+        height=650,
+        showlegend=True,
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1.02
+        ),
+        margin=dict(l=0, r=0, t=80, b=0)
+    )
+    
+    return fig_mapa, estaciones_info
+
 def create_temp_evolution_chart(df):
     """Gráfico de evolución de temperaturas"""
     fig = go.Figure()
@@ -389,7 +599,7 @@ def create_agricultural_indicators_chart(df):
     """Gráfico de indicadores agrícolas"""
     fig = make_subplots(
         rows=2, cols=1,
-        subplot_titles=("Grados Día de Crecimiento (Base 10°C)", "Días Secos por Año"),
+        subplot_titles=("Grados-Día de Crecimiento Acumulados (Base 10°C)", "Días Secos por Año"),
         vertical_spacing=0.12
     )
     
@@ -397,7 +607,7 @@ def create_agricultural_indicators_chart(df):
     fig.add_trace(go.Scatter(
         x=df['YEAR'], y=df['GDD_10'],
         mode='lines+markers',
-        name='GDD Base 10°C',
+        name='GDD Acumulados (Base 10°C)',
         line=dict(color='green', width=2),
         marker=dict(size=4)
     ), row=1, col=1)
@@ -444,7 +654,7 @@ def create_agricultural_indicators_chart(df):
     )
     
     fig.update_xaxes(title_text="Año", row=2, col=1)
-    fig.update_yaxes(title_text="Grados día", row=1, col=1)
+    fig.update_yaxes(title_text="Grados-día acumulados", row=1, col=1)
     fig.update_yaxes(title_text="Días", row=2, col=1)
     
     return fig
@@ -548,7 +758,8 @@ def main():
     )
     
     # Contenido principal
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab_map, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "🗺️ Mapa Estaciones",
         "🌡️ Temperaturas", 
         "🌧️ Precipitación", 
         "⚡ Eventos Extremos",
@@ -556,6 +767,84 @@ def main():
         "📊 Análisis Climático",
         "🤖 ML & Predicciones"
     ])
+    
+    with tab_map:
+        st.markdown("### Red de Estaciones Meteorológicas de Andalucía")
+        
+        # Crear y mostrar el mapa
+        with st.spinner("🗺️ Generando mapa de estaciones..."):
+            fig_mapa, estaciones_info = create_andalucia_stations_map()
+        
+        st.plotly_chart(fig_mapa, use_container_width=True)
+        
+        # Estadísticas de las estaciones
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                "Total Estaciones",
+                len(estaciones_info),
+                delta=f"8 provincias"
+            )
+        
+        with col2:
+            elevacion_media = estaciones_info['ELEVATION'].mean()
+            st.metric(
+                "Elevación Media",
+                f"{elevacion_media:.0f} m",
+                delta=f"{estaciones_info['ELEVATION'].min():.0f}-{estaciones_info['ELEVATION'].max():.0f} m"
+            )
+        
+        with col3:
+            temp_media = estaciones_info['TAVG_C'].mean()
+            st.metric(
+                "Temp. Media Regional",
+                f"{temp_media:.1f}°C",
+                delta=f"Rango: {estaciones_info['TAVG_C'].min():.1f}-{estaciones_info['TAVG_C'].max():.1f}°C"
+            )
+        
+        with col4:
+            precip_media = estaciones_info['PRCP_MM'].mean()
+            st.metric(
+                "Precip. Media Regional",
+                f"{precip_media:.0f} mm",
+                delta=f"Variación: ±{estaciones_info['PRCP_MM'].std():.0f} mm"
+            )
+        
+        # Análisis regional
+        st.markdown('<div class="success-box">', unsafe_allow_html=True)
+        st.markdown("#### 🌍 Análisis Regional")
+        
+        # Distribución por provincias
+        prov_counts = estaciones_info['PROVINCIA'].value_counts()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**📍 Distribución por Provincias:**")
+            for provincia, count in prov_counts.items():
+                st.markdown(f"• **{provincia}**: {count} estación(es)")
+        
+        with col2:
+            st.markdown("**🏔️ Gradiente Altitudinal:**")
+            costa = len(estaciones_info[estaciones_info['ELEVATION'] < 50])
+            interior = len(estaciones_info[(estaciones_info['ELEVATION'] >= 50) & (estaciones_info['ELEVATION'] < 300)])
+            montana = len(estaciones_info[estaciones_info['ELEVATION'] >= 300])
+            
+            st.markdown(f"• **Costa** (<50m): {costa} estaciones")
+            st.markdown(f"• **Interior** (50-300m): {interior} estaciones")
+            st.markdown(f"• **Montaña** (>300m): {montana} estaciones")
+        
+        # Características climáticas
+        st.markdown("**🌡️ Características Climáticas Regionales:**")
+        st.markdown(f"""
+        - **Temperatura**: Gradiente térmico de **{estaciones_info['TAVG_C'].max() - estaciones_info['TAVG_C'].min():.1f}°C** entre estaciones
+        - **Precipitación**: Variabilidad de **{estaciones_info['PRCP_MM'].max() - estaciones_info['PRCP_MM'].min():.0f} mm** anuales
+        - **Altitud**: Desde el nivel del mar hasta **{estaciones_info['ELEVATION'].max():.0f} m** de altitud
+        - **Cobertura**: Red completa cubriendo todas las zonas climáticas andaluzas
+        """)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
     with tab1:
         st.markdown("### Evolución de Temperaturas")
