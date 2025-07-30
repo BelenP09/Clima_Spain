@@ -1,4 +1,4 @@
-# 🌾 Dashboard Climático Agrícola - Sevilla SPE00120512
+# 🌾 Dashboard Climático Agrícola - Sevilla
 # Análisis Profesional para la Agricultura Mediterránea con DATOS REALES
 
 import streamlit as st
@@ -259,7 +259,7 @@ def create_temp_evolution_chart(df):
     
     fig.update_layout(
         title={
-            'text': "🌡️ Evolución de Temperaturas (1951-2025)<br><sub>Sevilla San Pablo - SPE00120512</sub>",
+            'text': "🌡️ Evolución de Temperaturas (1951-2025)<br><sub>Sevilla</sub>",
             'x': 0.5,
             'xanchor': 'center'
         },
@@ -483,7 +483,7 @@ def create_climate_classification_chart(df):
 def main():
     # Encabezado principal
     st.markdown('<h1 class="main-header">🌾 Dashboard Climático Agrícola</h1>', unsafe_allow_html=True)
-    st.markdown('<h2 class="sub-header">📍 Estación SPE00120512 - Sevilla San Pablo</h2>', unsafe_allow_html=True)
+    st.markdown('<h2 class="sub-header">📍 Estación Sevilla</h2>', unsafe_allow_html=True)
     
     # Cargar datos
     with st.spinner("🔄 Cargando datos climáticos..."):
@@ -978,7 +978,7 @@ def main():
     <div style='text-align: center; color: #7f8c8d;'>
     📊 <strong>Dashboard basado en datos reales:</strong> {len(df)} años de registros climáticos ({df['YEAR'].min()}-{df['YEAR'].max()})<br>
     🌾 <strong>Análisis agroclimático profesional</strong> | 🤖 <strong>Machine Learning & Predicciones</strong><br>
-    📍 <strong>SPE00120512 - Sevilla San Pablo, España</strong> | 🔬 <strong>Enfoque Agricultura Mediterránea</strong><br>
+    📍 <strong>Sevilla, España</strong> | 🔬 <strong>Enfoque Agricultura Mediterránea</strong><br>
     ⚡ <strong>Procesamiento en tiempo real</strong> | 📈 <strong>Visualizaciones interactivas</strong>
     </div>
     """, unsafe_allow_html=True)
